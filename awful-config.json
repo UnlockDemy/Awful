@@ -1,1 +1,102 @@
+local Unlocker, awful, project = ...
+local arms = project.warrior.arms
 
+local Spell = awful.Spell
+awful.Populate({
+    execute = Spell(163201, { damage = "physical" }),
+    slam = Spell(1464, { damage = "physical" }),
+    mortalStrike = Spell(12294, { damage = "physical" }),
+    overpower = Spell(7384, { damage = "physical" }),
+    warbreaker = Spell(262161, { damage = "physical", facingNotRequired = true }),
+    rend = Spell(772, { damage = "physical", bleed = true }),
+    sweepingStrikes = Spell(260708),
+    charge = Spell(100),
+    leap = Spell(6544),
+    avatar = Spell(107574),
+}, arms, getfenv(1))
+
+charge:Callback("gapclose", function(spell)
+    -- don't charge if we recently leaped
+    if leap.cd > 29 then return end
+    if target.distance > 12 and player.movingToward(target, { angle = 45, duration = 0.15 })  then
+        if spell:Cast(target) then
+            awful.alert("Charge (Gapclose)", spell.id)
+        end
+    end
+end)
+
+leap:Callback("gapclose", function(spell)
+    -- don't leap if we recently charged
+    if charge.recentlyUsed(2) then return end
+    if target.distance > 12 and player.movingToward(target, { angle = 45, duration = 0.15 }) then
+        if spell:AoECast(target) then
+            awful.alert("Leap (Gapclose)", spell.id)
+        end
+    end
+end)
+
+execute:Callback(function(spell)
+    spell:Cast(target)
+end)
+
+overpower:Callback(function(spell)
+    spell:Cast(target)
+end)
+
+-- avatar during burst
+avatar:Callback("burst", function(spell)
+    if target.meleeRange and spell:Cast() then
+        awful.alert("Avatar (Burst)", spell.id)
+    end
+end)
+
+-- high priority warbreaker on /awful burst
+warbreaker:Callback("burst", function(spell)
+    if spell:Cast(target) then
+        awful.alert("Warbreaker (Burst)", spell.id)
+    end
+end)
+
+-- non-labelled warbreaker falls lower in prio list
+warbreaker:Callback(function(spell)
+    spell:Cast(target)
+end)
+
+mortalStrike:Callback(function(spell)
+    spell:Cast(target)
+end)
+
+slam:Callback(function(spell)
+    -- only use slam while capping out on rage so we can always MS on cooldown...
+    if mortalStrike.cd > 3 or player.rage > 70 then
+		spell:Cast(target)
+    end
+end)
+
+-- maintain rend single target, high priority
+rend:Callback("maintain", function(spell)
+    if target.debuffRemains(spell.id, player) < 4 then
+        spell:Cast(target)
+    end
+end)
+
+-- spread rend, low priority
+-- (rend spreading is probably not great, it's just an example of how we *can* do it)
+rend:Callback("spread", function(spell)
+    if player.rage > 55 then
+        for _, enemy in ipairs(enemies) do
+            if not enemy.isUnit(target) and enemy.debuffRemains(772, player) < 4 then
+                if spell:Cast(enemy) then
+                    awful.alert("Rend " .. enemy.class .. " (Spread)", spell.id)
+                    return true
+                end
+            end
+        end
+    end
+end)
+
+sweepingStrikes:Callback(function(spell)
+    if player.combat then
+        spell:Cast()
+	end
+end)
